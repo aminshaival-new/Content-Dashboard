@@ -12,11 +12,13 @@ import {
   Sparkles,
   Settings,
   Zap,
+  FileText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const NAV = [
   { href: "/hook-vault", label: "Hook Vault", icon: BookMarked },
+  { href: "/script", label: "Script", icon: FileText },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/competitor-tracker", label: "Competitor Tracker", icon: Users },
   { href: "/scheduler", label: "Scheduler", icon: Calendar },
