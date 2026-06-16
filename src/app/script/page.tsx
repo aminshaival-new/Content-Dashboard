@@ -162,33 +162,39 @@ export default function Script() {
   const overLimit = charCount > limit
   const wordCount = fullScript.trim() ? fullScript.trim().split(/\s+/).length : 0
 
-  const sectionExamples = (hookTemplate: string): Record<string, string> => ({
-    hook: hookTemplate || "POV: You just discovered the [THING] that changes everything...",
-    body1: "Here's what most people get wrong: they focus on [WRONG THING] instead of [RIGHT THING]. And the data backs this up — [STAT OR EXAMPLE].",
-    body2: "I tested this for [TIME] across [NUMBER] pieces of content. The result? [RESULT]. Here's the exact [FRAMEWORK/SYSTEM] I used...",
-    body3: "The counterintuitive part? [SURPRISING INSIGHT]. Most people think [COMMON BELIEF] — but that's exactly why [REASON IT'S WRONG].",
-    cta: "Save this if you want to remember it. And drop a '🔥' in the comments if this changed how you think about [TOPIC].",
-  })
-
-  const generateSection = (sectionId: string) => {
+  const generateSection = async (sectionId: string) => {
     setGenerating(sectionId)
-    const examples = sectionExamples(pendingHook?.template || "")
-    setTimeout(() => {
-      setScript(s => ({ ...s, [sectionId]: examples[sectionId] || "" }))
-      setGenerating(null)
-    }, 900)
+    try {
+      const res = await fetch("/api/generate-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sectionId, hook: script.hook, allSections: [sectionId] }),
+      })
+      const data = await res.json()
+      if (data.results?.[sectionId]) {
+        setScript(s => ({ ...s, [sectionId]: data.results[sectionId] }))
+      }
+    } catch {}
+    setGenerating(null)
   }
 
-  const generateAll = (hookTemplate?: string) => {
+  const generateAll = async (hookTemplate?: string) => {
+    const hookText = hookTemplate ?? script.hook
+    if (!hookText) return
     setGeneratingAll(true)
-    const examples = sectionExamples(hookTemplate ?? pendingHook?.template ?? "")
-    const ids = ["body1", "body2", "body3", "cta"]
-    ids.forEach((id, i) => {
-      setTimeout(() => {
-        setScript(s => ({ ...s, [id]: examples[id] }))
-        if (i === ids.length - 1) setGeneratingAll(false)
-      }, 500 + i * 350)
-    })
+    if (hookTemplate) setScript(s => ({ ...s, hook: hookTemplate }))
+    try {
+      const res = await fetch("/api/generate-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hook: hookText, allSections: ["body1", "body2", "body3", "cta"] }),
+      })
+      const data = await res.json()
+      if (data.results) {
+        setScript(s => ({ ...s, ...data.results }))
+      }
+    } catch {}
+    setGeneratingAll(false)
   }
 
   const clearAll = () => {
