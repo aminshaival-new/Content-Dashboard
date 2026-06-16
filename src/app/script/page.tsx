@@ -215,7 +215,7 @@ export default function Script() {
 
         {/* Platform selector + Generate all */}
         <div className="flex items-center gap-2">
-          {pendingHook && (
+          {script.hook && (
             <button
               onClick={() => generateAll()}
               disabled={generatingAll}
