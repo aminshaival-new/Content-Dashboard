@@ -16,6 +16,7 @@ type PendingHook = {
   niche: string
   creator: string
   views: string
+  autoGenerate?: boolean
 }
 
 type Section = { id: string; label: string; placeholder: string; rows: number }
@@ -123,6 +124,7 @@ export default function Script() {
   const [platform, setPlatform] = useState("Instagram")
   const [showPlatformMenu, setShowPlatformMenu] = useState(false)
   const [generating, setGenerating] = useState<string | null>(null)
+  const [generatingAll, setGeneratingAll] = useState(false)
   const [dismissed, setDismissed] = useState(false)
 
   const [script, setScript] = useState<Record<string, string>>({
@@ -133,7 +135,7 @@ export default function Script() {
     cta: "",
   })
 
-  // Load hook from Hook Vault
+  // Load hook from Hook Vault — auto-generate all sections if flagged
   useEffect(() => {
     if (typeof window === "undefined") return
     const raw = localStorage.getItem("pendingHook")
@@ -141,11 +143,14 @@ export default function Script() {
       try {
         const parsed = JSON.parse(raw) as PendingHook
         setPendingHook(parsed)
-        // Pre-fill the hook section with the template
         setScript(s => ({ ...s, hook: parsed.template }))
+        if (parsed.autoGenerate) {
+          localStorage.removeItem("pendingHook")
+          setTimeout(() => generateAll(parsed.template), 400)
+        }
       } catch {}
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fullScript = SECTIONS
     .map(s => script[s.id])
@@ -157,19 +162,33 @@ export default function Script() {
   const overLimit = charCount > limit
   const wordCount = fullScript.trim() ? fullScript.trim().split(/\s+/).length : 0
 
+  const sectionExamples = (hookTemplate: string): Record<string, string> => ({
+    hook: hookTemplate || "POV: You just discovered the [THING] that changes everything...",
+    body1: "Here's what most people get wrong: they focus on [WRONG THING] instead of [RIGHT THING]. And the data backs this up — [STAT OR EXAMPLE].",
+    body2: "I tested this for [TIME] across [NUMBER] pieces of content. The result? [RESULT]. Here's the exact [FRAMEWORK/SYSTEM] I used...",
+    body3: "The counterintuitive part? [SURPRISING INSIGHT]. Most people think [COMMON BELIEF] — but that's exactly why [REASON IT'S WRONG].",
+    cta: "Save this if you want to remember it. And drop a '🔥' in the comments if this changed how you think about [TOPIC].",
+  })
+
   const generateSection = (sectionId: string) => {
     setGenerating(sectionId)
-    const examples: Record<string, string> = {
-      hook: pendingHook?.template || "POV: You just discovered the [THING] that changes everything...",
-      body1: "Here's what most people get wrong: they focus on [WRONG THING] instead of [RIGHT THING]. And the data backs this up — [STAT OR EXAMPLE].",
-      body2: "I tested this for [TIME] across [NUMBER] pieces of content. The result? [RESULT]. Here's the exact [FRAMEWORK/SYSTEM] I used...",
-      body3: "The counterintuitive part? [SURPRISING INSIGHT]. Most people think [COMMON BELIEF] — but that's exactly why [REASON IT'S WRONG].",
-      cta: "Save this if you want to remember it. And drop a '🔥' in the comments if this changed how you think about [TOPIC].",
-    }
+    const examples = sectionExamples(pendingHook?.template || "")
     setTimeout(() => {
       setScript(s => ({ ...s, [sectionId]: examples[sectionId] || "" }))
       setGenerating(null)
     }, 900)
+  }
+
+  const generateAll = (hookTemplate?: string) => {
+    setGeneratingAll(true)
+    const examples = sectionExamples(hookTemplate ?? pendingHook?.template ?? "")
+    const ids = ["body1", "body2", "body3", "cta"]
+    ids.forEach((id, i) => {
+      setTimeout(() => {
+        setScript(s => ({ ...s, [id]: examples[id] }))
+        if (i === ids.length - 1) setGeneratingAll(false)
+      }, 500 + i * 350)
+    })
   }
 
   const clearAll = () => {
@@ -194,8 +213,23 @@ export default function Script() {
           <p className="text-sm text-gray-500 ml-12">Write your script section by section</p>
         </div>
 
-        {/* Platform selector */}
+        {/* Platform selector + Generate all */}
         <div className="flex items-center gap-2">
+          {pendingHook && (
+            <button
+              onClick={() => generateAll()}
+              disabled={generatingAll}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border transition-all",
+                generatingAll
+                  ? "bg-violet-500/10 text-violet-400 border-violet-500/20 opacity-70 cursor-not-allowed"
+                  : "bg-violet-600 text-white border-violet-500/40 hover:bg-violet-500"
+              )}
+            >
+              <Sparkles className={cn("w-3.5 h-3.5", generatingAll && "animate-spin")} />
+              {generatingAll ? "Generating..." : "Generate all"}
+            </button>
+          )}
           <div className="relative">
             <button
               onClick={() => setShowPlatformMenu(v => !v)}

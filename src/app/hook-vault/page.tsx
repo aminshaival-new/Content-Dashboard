@@ -431,7 +431,11 @@ function SaveModal({ onClose }: { onClose: () => void }) {
 
 // ─── Hook Card ────────────────────────────────────────────────────────────────
 
-function HookCard({ hook, onUse }: { hook: Hook; onUse: (h: Hook) => void }) {
+function HookCard({ hook, onUse, onWriteScript }: {
+  hook: Hook
+  onUse: (h: Hook) => void
+  onWriteScript: (h: Hook) => void
+}) {
   return (
     <div className="bg-[#111119] border border-[#1f1f2e] rounded-2xl p-5 hover:border-violet-500/25 transition-all flex flex-col gap-4">
       {/* Top: badges + view count */}
@@ -474,10 +478,16 @@ function HookCard({ hook, onUse }: { hook: Hook; onUse: (h: Hook) => void }) {
           <span className="text-[11px] text-gray-600">{hook.dateAdded}</span>
           <button
             onClick={() => onUse(hook)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#1f1f2e] text-gray-400 hover:text-white hover:border-[#2a2a3e] text-xs font-medium transition-all"
+          >
+            Use hook
+          </button>
+          <button
+            onClick={() => onWriteScript(hook)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors shadow-lg shadow-violet-900/20"
           >
-            Use this
-            <ArrowRight className="w-3 h-3" />
+            <Sparkles className="w-3 h-3" />
+            Write Script
           </button>
         </div>
       </div>
@@ -541,6 +551,20 @@ export default function HookVault() {
         niche: hook.niche,
         creator: hook.creator.name,
         views: hook.viewsLabel,
+      }))
+    }
+    router.push("/script")
+  }
+
+  const writeScript = (hook: Hook) => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("pendingHook", JSON.stringify({
+        template: hook.template,
+        hookType: hook.hookType,
+        niche: hook.niche,
+        creator: hook.creator.name,
+        views: hook.viewsLabel,
+        autoGenerate: true,
       }))
     }
     router.push("/script")
@@ -696,7 +720,7 @@ export default function HookVault() {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {filtered.map(hook => (
-            <HookCard key={hook.id} hook={hook} onUse={useHook} />
+            <HookCard key={hook.id} hook={hook} onUse={useHook} onWriteScript={writeScript} />
           ))}
         </div>
       )}
