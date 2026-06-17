@@ -35,7 +35,8 @@ function mapInstagram(item: Record<string, unknown>, accountId: number) {
   const tags = ((item.hashtags as string[]) ?? []).slice(0, 3).map(h => `#${h}`).join(" ")
   const onScreen = tags || hook.replace(/['"]/g, "").toUpperCase().slice(0, 50)
 
-  return { accountId, views, viewsLabel: fmtViews(views), postedDate: date, hookType: detectHookType(hook), hook, onScreenText: onScreen, transcript: caption.slice(0, 300) || hook }
+  const url = (item.url as string) || (item.shortCode ? `https://www.instagram.com/reel/${item.shortCode}/` : undefined)
+  return { accountId, views, viewsLabel: fmtViews(views), postedDate: date, hookType: detectHookType(hook), hook, onScreenText: onScreen, transcript: caption.slice(0, 300) || hook, url }
 }
 
 function mapTikTok(item: Record<string, unknown>, accountId: number) {
@@ -51,7 +52,8 @@ function mapTikTok(item: Record<string, unknown>, accountId: number) {
   const tags = rawTags.slice(0, 3).map(h => `#${h.name}`).join(" ")
   const onScreen = tags || hook.replace(/['"]/g, "").toUpperCase().slice(0, 50)
 
-  return { accountId, views, viewsLabel: fmtViews(views), postedDate: date, hookType: detectHookType(hook), hook, onScreenText: onScreen, transcript: desc.slice(0, 300) || hook }
+  const url = (item.webVideoUrl as string) || undefined
+  return { accountId, views, viewsLabel: fmtViews(views), postedDate: date, hookType: detectHookType(hook), hook, onScreenText: onScreen, transcript: desc.slice(0, 300) || hook, url }
 }
 
 export async function GET(req: NextRequest) {

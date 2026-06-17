@@ -583,18 +583,18 @@ export default function Trending() {
   }
 
   useEffect(() => {
-    // Check localStorage cache first
+    // Check localStorage cache first (12h TTL)
     const cached = trendingStore.get()
     if (cached && !trendingStore.isStale()) {
       setLiveItems(cached.items.map(cachedToItem))
       setUsingLive(true)
     } else {
-      // Fetch fresh data
       fetchFeed()
     }
-    // Also mark existing saved hooks as savedIds
-    const vaultIds = new Set(hooksStore.list().map(h => h.id))
-    // we don't have a mapping here, just leave empty
+
+    // Auto-refresh every 12 hours while page is open
+    const interval = setInterval(() => { fetchFeed() }, 12 * 60 * 60 * 1000)
+    return () => clearInterval(interval)
   }, [])
 
   const displayItems = usingLive ? liveItems : ITEMS

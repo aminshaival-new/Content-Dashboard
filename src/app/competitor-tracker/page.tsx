@@ -32,6 +32,7 @@ type ReelCard = {
   hook: string               // transcribed spoken hook — first 2 sentences of audio
   onScreenText: string       // OCR'd text visible on screen
   transcript: string         // full transcription excerpt (~3 sentences)
+  url?: string               // direct link to the reel/post
 }
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
@@ -46,6 +47,18 @@ const ACCOUNTS: Account[] = [
   { id: 7, name: "Chris Williamson",handle: "@chriswillx",   followers: 1200000, followersLabel: "1.2M", initials: "CW", color: "bg-slate-600",  platform: "Instagram", niche: "Mindset" },
   { id: 8, name: "Ali Abdaal",      handle: "@aliabdaal",    followers: 4700000, followersLabel: "4.7M", initials: "AA", color: "bg-teal-600",   platform: "YouTube",   niche: "Productivity" },
 ]
+
+function profileUrl(account: Account): string {
+  const h = account.handle.replace(/^@/, "")
+  switch (account.platform) {
+    case "Instagram": return `https://www.instagram.com/${h}/reels/`
+    case "TikTok":    return `https://www.tiktok.com/@${h}`
+    case "YouTube":   return `https://www.youtube.com/@${h}`
+    case "Twitter":   return `https://twitter.com/${h}`
+    case "LinkedIn":  return `https://www.linkedin.com/in/${h}`
+    default:          return `https://www.instagram.com/${h}/`
+  }
+}
 
 // ─── Reels (5 per account, all scraped this week) ─────────────────────────────
 
@@ -457,10 +470,15 @@ function ReelItem({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 border border-transparent hover:border-[#1f1f2e] px-2 py-1.5 rounded-lg transition-all">
+          <a
+            href={reel.url || profileUrl(account)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-300 border border-transparent hover:border-[#1f1f2e] px-2 py-1.5 rounded-lg transition-all"
+          >
             <ExternalLink className="w-3 h-3" />
             Watch
-          </button>
+          </a>
           <button
             onClick={onSave}
             className={cn(

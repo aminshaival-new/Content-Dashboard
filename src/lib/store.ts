@@ -110,6 +110,6 @@ export const trendingStore = {
   isStale: (): boolean => {
     const c = trendingStore.get()
     if (!c) return true
-    return Date.now() - new Date(c.cachedAt).getTime() > 30 * 60 * 1000
+    return Date.now() - new Date(c.cachedAt).getTime() > 12 * 60 * 60 * 1000
   },
 }
