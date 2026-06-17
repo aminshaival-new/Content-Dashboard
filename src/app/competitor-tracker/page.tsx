@@ -772,12 +772,11 @@ export default function CompetitorTracker() {
     setScraping(false)
   }
 
-  const handleAddAccount = async (data: { name: string; handle: string; platform: string; niche: string }) => {
+  const handleAddAccount = (data: { name: string; handle: string; platform: string; niche: string }) => {
     const words = data.name.trim().split(/\s+/)
     const initials = words.length >= 2
       ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
       : words[0].slice(0, 2).toUpperCase()
-    const color = AVATAR_COLORS[customAccounts.length % AVATAR_COLORS.length]
     const newAccount: Account = {
       id: Date.now(),
       name: data.name,
@@ -785,29 +784,34 @@ export default function CompetitorTracker() {
       followers: 0,
       followersLabel: "—",
       initials,
-      color,
+      color: AVATAR_COLORS[customAccounts.length % AVATAR_COLORS.length],
       platform: data.platform,
       niche: data.niche || "—",
     }
-    const updated = [...customAccounts, newAccount]
-    setCustomAccounts(updated)
-    try { localStorage.setItem("cd_tracked_accounts", JSON.stringify(updated)) } catch {}
+    // Synchronously add the account — this must complete before onClose() fires
+    setCustomAccounts(prev => {
+      const updated = [...prev, newAccount]
+      try { localStorage.setItem("cd_tracked_accounts", JSON.stringify(updated)) } catch {}
+      return updated
+    })
 
-    // Auto-scrape reels for newly added account
-    try {
-      const res = await fetch("/api/scrape-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ handle: data.handle, platform: data.platform, accountId: newAccount.id }),
-      })
-      if (res.ok) {
-        const { runId } = await res.json()
-        if (runId) {
-          setScrapeJobs(prev => ({ ...prev, [newAccount.id]: { runId, platform: data.platform } }))
-          setAccountFilter(newAccount.id)
+    // Fire-and-forget scrape — doesn't block account addition
+    ;(async () => {
+      try {
+        const res = await fetch("/api/scrape-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ handle: data.handle, platform: data.platform, accountId: newAccount.id }),
+        })
+        if (res.ok) {
+          const { runId } = await res.json()
+          if (runId) {
+            setScrapeJobs(prev => ({ ...prev, [newAccount.id]: { runId, platform: data.platform } }))
+            setAccountFilter(newAccount.id)
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    })()
   }
 
   const handleAddReel = (reel: Omit<ReelCard, "id">) => {
