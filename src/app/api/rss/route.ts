@@ -7,11 +7,11 @@ const parser = new Parser({ timeout: 8000 })
 type Feed = { url: string; name: string; type: CachedTrend["sourceType"]; category: string }
 
 const FEEDS: Feed[] = [
-  { url: "https://news.ycombinator.com/rss",                            name: "Hacker News",        type: "rss",        category: "Tech" },
-  { url: "https://techcrunch.com/category/artificial-intelligence/feed/",name: "TechCrunch AI",     type: "blog",       category: "AI" },
-  { url: "https://www.theverge.com/rss/tech/index.xml",                  name: "The Verge",         type: "rss",        category: "Tech" },
-  { url: "https://feeds.arstechnica.com/arstechnica/index",              name: "Ars Technica",      type: "blog",       category: "Tech" },
-  { url: "https://www.wired.com/feed/rss",                               name: "WIRED",             type: "blog",       category: "Culture" },
+  { url: "https://news.ycombinator.com/rss",                             name: "Hacker News",    type: "rss",        category: "AI Tools" },
+  { url: "https://techcrunch.com/category/artificial-intelligence/feed/", name: "TechCrunch AI", type: "blog",       category: "AI Tools" },
+  { url: "https://www.theverge.com/rss/tech/index.xml",                   name: "The Verge",     type: "rss",        category: "Platform Changes" },
+  { url: "https://feeds.arstechnica.com/arstechnica/index",               name: "Ars Technica",  type: "blog",       category: "Industry" },
+  { url: "https://www.wired.com/feed/rss",                                name: "WIRED",         type: "blog",       category: "Creator Economy" },
 ]
 
 const HOOK_KEYWORDS: Record<string, string[]> = {

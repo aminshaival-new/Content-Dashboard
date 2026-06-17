@@ -185,7 +185,7 @@ const SCORE_COLOR = (s: number) =>
   : s >= 5 ? "text-blue-300 bg-blue-500/15 border-blue-500/20"
   : "text-gray-500 bg-gray-500/10 border-gray-500/15"
 
-const CATEGORIES = ["All", "AI Tools", "Platform Changes", "Creator Economy", "Monetization", "Workflow", "Industry"]
+const DEFAULT_CATEGORIES = ["All", "AI Tools", "Platform Changes", "Creator Economy", "Monetization", "Workflow", "Industry"]
 
 // ─── Slack integration stub ───────────────────────────────────────────────────
 // Replace body with: POST to your Slack incoming webhook URL, or
@@ -628,6 +628,14 @@ export default function Trending() {
     [displayItems]
   )
 
+  const categories = useMemo(() => {
+    const cats = new Set<string>()
+    displayItems.forEach(i => { if (i.category) cats.add(i.category) })
+    // merge live categories with defaults so tabs don't disappear when switching seed↔live
+    DEFAULT_CATEGORIES.slice(1).forEach(c => cats.add(c))
+    return ["All", ...Array.from(cats).sort()]
+  }, [displayItems])
+
   const filteredFeed = useMemo(() => {
     return displayItems
       .filter(i => {
@@ -756,7 +764,7 @@ export default function Trending() {
 
           {/* Category filter */}
           <div className="flex items-center gap-1 mb-4 flex-wrap">
-            {CATEGORIES.map(c => (
+            {categories.map(c => (
               <button
                 key={c}
                 onClick={() => setActiveCategory(c)}
