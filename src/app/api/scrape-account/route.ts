@@ -15,10 +15,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "APIFY_API_TOKEN not configured" }, { status: 503 })
   }
 
-  const { handle, platform, accountId } = await req.json() as {
+  const { handle, platform, accountId, limit = 5 } = await req.json() as {
     handle: string
     platform: string
     accountId: number
+    limit?: number
   }
 
   const username = handle.replace(/^@/, "")
@@ -26,8 +27,8 @@ export async function POST(req: NextRequest) {
 
   const input =
     platform === "TikTok"
-      ? { profiles: [`https://www.tiktok.com/@${username}`], resultsPerPage: 5 }
-      : { username: [username], resultsLimit: 5 }
+      ? { profiles: [`https://www.tiktok.com/@${username}`], resultsPerPage: limit }
+      : { username: [username], resultsLimit: limit }
 
   try {
     const res = await fetch(
