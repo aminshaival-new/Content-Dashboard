@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import {
   Users, Plus, RefreshCw, BookMarked, Check, ExternalLink,
-  Mic, Monitor, FileText, ChevronDown, ChevronUp, X, Clock, Zap, CalendarDays,
+  Mic, Monitor, FileText, ChevronDown, ChevronUp, X, Clock, Zap, CalendarDays, Loader2,
 } from "lucide-react"
 import { cn, formatNum } from "@/lib/utils"
 import { hooksStore, StoredHook } from "@/lib/store"
@@ -333,7 +333,7 @@ function viewColor(v: number) {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function AccountChip({ account, active, onClick }: { account: Account; active: boolean; onClick: () => void }) {
+function AccountChip({ account, active, scraping, onClick }: { account: Account; active: boolean; scraping?: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
@@ -345,9 +345,10 @@ function AccountChip({ account, active, onClick }: { account: Account; active: b
       )}
     >
       <div className={cn("w-4 h-4 rounded-md flex items-center justify-center text-white text-[9px] font-bold", account.color)}>
-        {account.initials[0]}
+        {scraping ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : account.initials[0]}
       </div>
       {account.name.split(" ")[0]}
+      {scraping && <span className="text-[10px] text-violet-400 animate-pulse">Syncing</span>}
     </button>
   )
 }
@@ -510,7 +511,7 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data: { nam
         </div>
         <div className="p-5 space-y-4">
           <p className="text-xs text-gray-500">
-            Add a handle and we'll scrape their top 5 reels every Sunday at 6:00 AM — transcribing audio, pulling on-screen text, and detecting hook type automatically.
+            Add a handle and we'll immediately pull their top 5 reels via Apify — detecting hook type, extracting captions, and syncing view counts automatically.
           </p>
           {error && (
             <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</p>
@@ -652,6 +653,8 @@ export default function CompetitorTracker() {
   const [customAccounts, setCustomAccounts] = useState<Account[]>([])
   const [customReels, setCustomReels]       = useState<ReelCard[]>([])
   const [showAddReel, setShowAddReel]       = useState(false)
+  const [scrapeJobs, setScrapeJobs] = useState<Record<number, { runId: string; platform: string }>>({})
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     try {
@@ -663,6 +666,46 @@ export default function CompetitorTracker() {
       if (raw2) setCustomReels(JSON.parse(raw2) as ReelCard[])
     } catch {}
   }, [])
+
+  // Poll Apify run status for all pending scrape jobs
+  useEffect(() => {
+    if (Object.keys(scrapeJobs).length === 0) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      return
+    }
+
+    const tick = async () => {
+      for (const [accountIdStr, job] of Object.entries(scrapeJobs)) {
+        const accountId = Number(accountIdStr)
+        try {
+          const res = await fetch(
+            `/api/scrape-status?runId=${job.runId}&accountId=${accountId}&platform=${encodeURIComponent(job.platform)}`
+          )
+          const data = await res.json()
+
+          if (data.status === "done") {
+            if (Array.isArray(data.reels) && data.reels.length > 0) {
+              const newReels: ReelCard[] = data.reels.map((r: Omit<ReelCard, "id">, i: number) => ({
+                ...r,
+                id: Date.now() + i,
+              }))
+              setCustomReels(prev => {
+                const updated = [...prev, ...newReels]
+                try { localStorage.setItem("cd_custom_reels", JSON.stringify(updated)) } catch {}
+                return updated
+              })
+            }
+            setScrapeJobs(prev => { const n = { ...prev }; delete n[accountId]; return n })
+          } else if (data.status === "failed") {
+            setScrapeJobs(prev => { const n = { ...prev }; delete n[accountId]; return n })
+          }
+        } catch {}
+      }
+    }
+
+    pollRef.current = setInterval(tick, 5000)
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+  }, [scrapeJobs])
 
   const allAccounts: Account[] = useMemo(
     () => [...ACCOUNTS, ...customAccounts],
@@ -710,12 +753,26 @@ export default function CompetitorTracker() {
   const toggleExpand = (id: number) =>
     setExpandedIds(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
 
-  const scrapeNow = () => {
+  const scrapeNow = async () => {
     setScraping(true)
-    setTimeout(() => setScraping(false), 2200)
+    try {
+      for (const acc of customAccounts) {
+        if (scrapeJobs[acc.id]) continue // already running
+        const res = await fetch("/api/scrape-account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ handle: acc.handle, platform: acc.platform, accountId: acc.id }),
+        })
+        if (res.ok) {
+          const { runId } = await res.json()
+          if (runId) setScrapeJobs(prev => ({ ...prev, [acc.id]: { runId, platform: acc.platform } }))
+        }
+      }
+    } catch {}
+    setScraping(false)
   }
 
-  const handleAddAccount = (data: { name: string; handle: string; platform: string; niche: string }) => {
+  const handleAddAccount = async (data: { name: string; handle: string; platform: string; niche: string }) => {
     const words = data.name.trim().split(/\s+/)
     const initials = words.length >= 2
       ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
@@ -734,11 +791,23 @@ export default function CompetitorTracker() {
     }
     const updated = [...customAccounts, newAccount]
     setCustomAccounts(updated)
+    try { localStorage.setItem("cd_tracked_accounts", JSON.stringify(updated)) } catch {}
+
+    // Auto-scrape reels for newly added account
     try {
-      localStorage.setItem("cd_tracked_accounts", JSON.stringify(updated))
-    } catch {
-      // ignore storage errors
-    }
+      const res = await fetch("/api/scrape-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handle: data.handle, platform: data.platform, accountId: newAccount.id }),
+      })
+      if (res.ok) {
+        const { runId } = await res.json()
+        if (runId) {
+          setScrapeJobs(prev => ({ ...prev, [newAccount.id]: { runId, platform: data.platform } }))
+          setAccountFilter(newAccount.id)
+        }
+      }
+    } catch {}
   }
 
   const handleAddReel = (reel: Omit<ReelCard, "id">) => {
@@ -820,6 +889,7 @@ export default function CompetitorTracker() {
             key={acc.id}
             account={acc}
             active={accountFilter === acc.id}
+            scraping={!!scrapeJobs[acc.id]}
             onClick={() => setAccountFilter(accountFilter === acc.id ? null : acc.id)}
           />
         ))}
@@ -839,11 +909,15 @@ export default function CompetitorTracker() {
             <Zap className="w-6 h-6 text-gray-600" />
           </div>
           <p className="text-sm font-semibold text-gray-300 mb-1">
-            {accountFilter != null ? "No reels yet for this account" : "No reels found"}
+            {accountFilter != null && scrapeJobs[accountFilter]
+              ? "Scraping reels from Apify…"
+              : accountFilter != null ? "No reels yet for this account" : "No reels found"}
           </p>
           <p className="text-xs text-gray-600 mb-5 max-w-xs">
-            {accountFilter != null
-              ? "This account was just added. Reels are scraped weekly — or add one manually to get started."
+            {accountFilter != null && scrapeJobs[accountFilter]
+              ? "Pulling top reels via Apify. This usually takes 30–60 seconds."
+              : accountFilter != null
+              ? "Reels are scraped automatically when you add an account. Add one manually to get started."
               : "Try clearing your filters."}
           </p>
           {accountFilter != null && (
