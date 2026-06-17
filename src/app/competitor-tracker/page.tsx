@@ -552,6 +552,95 @@ function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data: { nam
   )
 }
 
+// ─── Add Reel Modal ───────────────────────────────────────────────────────────
+
+const HOOK_TYPES_LIST = ["Listicle", "Shock", "Contrast", "Story", "POV", "Question", "Curiosity"]
+
+function AddReelModal({ accountId, onClose, onAdd }: {
+  accountId: number
+  onClose: () => void
+  onAdd: (reel: Omit<ReelCard, "id">) => void
+}) {
+  const [hook, setHook]             = useState("")
+  const [onScreenText, setOnScreen] = useState("")
+  const [transcript, setTranscript] = useState("")
+  const [views, setViews]           = useState("")
+  const [hookType, setHookType]     = useState("Shock")
+  const [error, setError]           = useState("")
+
+  const submit = () => {
+    if (!hook.trim()) { setError("Spoken hook is required"); return }
+    const viewsNum = parseInt(views.replace(/[^0-9]/g, "")) || 0
+    const viewsLabel = viewsNum >= 1_000_000
+      ? `${(viewsNum / 1_000_000).toFixed(1)}M`
+      : viewsNum >= 1_000 ? `${Math.round(viewsNum / 1_000)}K` : viewsNum ? String(viewsNum) : "—"
+    onAdd({
+      accountId,
+      views: viewsNum,
+      viewsLabel,
+      postedDate: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      hookType,
+      hook: hook.trim(),
+      onScreenText: onScreenText.trim() || hook.trim().toUpperCase(),
+      transcript: transcript.trim() || hook.trim(),
+    })
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[#0f0f1a] border border-[#1f1f2e] rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1f1f2e]">
+          <h2 className="text-sm font-bold text-white">Add Reel Manually</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
+          <div>
+            <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Spoken Hook <span className="text-red-400">*</span></label>
+            <textarea rows={2} value={hook} onChange={e => { setHook(e.target.value); setError("") }}
+              placeholder="First 1-2 sentences of the audio..."
+              className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50 resize-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Views</label>
+              <input value={views} onChange={e => setViews(e.target.value)}
+                placeholder="e.g. 1200000"
+                className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Hook Type</label>
+              <select value={hookType} onChange={e => setHookType(e.target.value)}
+                className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 focus:outline-none focus:border-violet-500/50">
+                {HOOK_TYPES_LIST.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">On-Screen Text</label>
+            <input value={onScreenText} onChange={e => setOnScreen(e.target.value)}
+              placeholder="Text overlaid on the video..."
+              className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Full Transcript (optional)</label>
+            <textarea rows={3} value={transcript} onChange={e => setTranscript(e.target.value)}
+              placeholder="First 8 seconds of audio..."
+              className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50 resize-none" />
+          </div>
+        </div>
+        <div className="px-5 pb-5 flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-[#1f1f2e] text-sm text-gray-400 hover:text-white transition-all">Cancel</button>
+          <button onClick={submit} className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
+            Add Reel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CompetitorTracker() {
@@ -561,18 +650,18 @@ export default function CompetitorTracker() {
   const [showAdd, setShowAdd]             = useState(false)
   const [scraping, setScraping]           = useState(false)
   const [customAccounts, setCustomAccounts] = useState<Account[]>([])
+  const [customReels, setCustomReels]       = useState<ReelCard[]>([])
+  const [showAddReel, setShowAddReel]       = useState(false)
 
-  // Load persisted custom accounts from localStorage on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem("cd_tracked_accounts")
-      if (raw) {
-        const parsed = JSON.parse(raw) as Account[]
-        setCustomAccounts(parsed)
-      }
-    } catch {
-      // ignore parse errors
-    }
+      if (raw) setCustomAccounts(JSON.parse(raw) as Account[])
+    } catch {}
+    try {
+      const raw2 = localStorage.getItem("cd_custom_reels")
+      if (raw2) setCustomReels(JSON.parse(raw2) as ReelCard[])
+    } catch {}
   }, [])
 
   const allAccounts: Account[] = useMemo(
@@ -580,10 +669,15 @@ export default function CompetitorTracker() {
     [customAccounts]
   )
 
+  const allReels: ReelCard[] = useMemo(
+    () => [...REELS, ...customReels],
+    [customReels]
+  )
+
   const sorted = useMemo(() => {
-    const reels = accountFilter != null ? REELS.filter(r => r.accountId === accountFilter) : REELS
+    const reels = accountFilter != null ? allReels.filter(r => r.accountId === accountFilter) : allReels
     return [...reels].sort((a, b) => b.views - a.views)
-  }, [accountFilter])
+  }, [accountFilter, allReels])
 
   const toggleSave = (reel: ReelCard) => {
     const id = reel.id
@@ -647,6 +741,13 @@ export default function CompetitorTracker() {
     }
   }
 
+  const handleAddReel = (reel: Omit<ReelCard, "id">) => {
+    const newReel: ReelCard = { ...reel, id: Date.now() }
+    const updated = [...customReels, newReel]
+    setCustomReels(updated)
+    try { localStorage.setItem("cd_custom_reels", JSON.stringify(updated)) } catch {}
+  }
+
   const accountForReel = (id: number) => allAccounts.find(a => a.id === id)!
 
   return (
@@ -697,7 +798,7 @@ export default function CompetitorTracker() {
         <div className="w-px h-4 bg-[#1f1f2e]" />
         <div className="flex items-center gap-1.5 text-xs text-gray-500">
           <Zap className="w-3 h-3 text-yellow-400" />
-          <span className="text-gray-300 font-medium">{REELS.length} reels</span> scraped this week
+          <span className="text-gray-300 font-medium">{allReels.length} reels</span> scraped this week
         </div>
       </div>
 
@@ -732,25 +833,57 @@ export default function CompetitorTracker() {
       </p>
 
       {/* Reel list */}
-      <div className="space-y-4">
-        {sorted.map((reel, i) => (
-          <ReelItem
-            key={reel.id}
-            reel={reel}
-            account={accountForReel(reel.accountId)}
-            rank={i + 1}
-            saved={savedIds.has(reel.id)}
-            expanded={expandedIds.has(reel.id)}
-            onSave={() => toggleSave(reel)}
-            onToggleExpand={() => toggleExpand(reel.id)}
-          />
-        ))}
-      </div>
+      {sorted.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-[#111119] border border-[#1f1f2e] flex items-center justify-center mb-4">
+            <Zap className="w-6 h-6 text-gray-600" />
+          </div>
+          <p className="text-sm font-semibold text-gray-300 mb-1">
+            {accountFilter != null ? "No reels yet for this account" : "No reels found"}
+          </p>
+          <p className="text-xs text-gray-600 mb-5 max-w-xs">
+            {accountFilter != null
+              ? "This account was just added. Reels are scraped weekly — or add one manually to get started."
+              : "Try clearing your filters."}
+          </p>
+          {accountFilter != null && (
+            <button
+              onClick={() => setShowAddReel(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Reel Manually
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {sorted.map((reel, i) => (
+            <ReelItem
+              key={reel.id}
+              reel={reel}
+              account={accountForReel(reel.accountId)}
+              rank={i + 1}
+              saved={savedIds.has(reel.id)}
+              expanded={expandedIds.has(reel.id)}
+              onSave={() => toggleSave(reel)}
+              onToggleExpand={() => toggleExpand(reel.id)}
+            />
+          ))}
+        </div>
+      )}
 
       {showAdd && (
         <AddModal
           onClose={() => setShowAdd(false)}
           onAdd={handleAddAccount}
+        />
+      )}
+      {showAddReel && accountFilter != null && (
+        <AddReelModal
+          accountId={accountFilter}
+          onClose={() => setShowAddReel(false)}
+          onAdd={handleAddReel}
         />
       )}
     </div>
