@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import {
   Calendar, Plus, Clock, CheckCircle2, Circle, X, Sparkles,
   ChevronRight, ChevronLeft, BookMarked, Zap, Copy, Check,
@@ -763,10 +763,32 @@ function PostCard({ post, onDelete }: { post: ScheduledPost; onDelete: (id: numb
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const STORAGE_KEY = "cd_posts"
+
+function loadPosts(): ScheduledPost[] {
+  if (typeof window === "undefined") return INITIAL_POSTS
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw) as ScheduledPost[]
+  } catch {}
+  // First load: seed with initial posts
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_POSTS))
+  return INITIAL_POSTS
+}
+
+function savePosts(posts: ScheduledPost[]) {
+  if (typeof window === "undefined") return
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts))
+}
+
 export default function Scheduler() {
-  const [posts, setPosts] = useState<ScheduledPost[]>(INITIAL_POSTS)
+  const [posts, setPosts] = useState<ScheduledPost[]>([])
   const [showCompose, setShowCompose] = useState(false)
   const [filter, setFilter] = useState<"all" | Platform>("all")
+
+  useEffect(() => {
+    setPosts(loadPosts())
+  }, [])
 
   const filtered = useMemo(
     () => filter === "all" ? posts : posts.filter(p => p.platforms.includes(filter as Platform)),
@@ -778,7 +800,12 @@ export default function Scheduler() {
   const published = filtered.filter(p => p.status === "published")
 
   const handleScheduled = (post: Omit<ScheduledPost, "id">) => {
-    setPosts(prev => [{ ...post, id: Date.now() }, ...prev])
+    const newPost = { ...post, id: Date.now() }
+    setPosts(prev => {
+      const next = [newPost, ...prev]
+      savePosts(next)
+      return next
+    })
     setShowCompose(false)
   }
 
@@ -854,7 +881,11 @@ export default function Scheduler() {
                 <PostCard
                   key={post.id}
                   post={post}
-                  onDelete={id => setPosts(prev => prev.filter(p => p.id !== id))}
+                  onDelete={id => setPosts(prev => {
+                    const next = prev.filter(p => p.id !== id)
+                    savePosts(next)
+                    return next
+                  })}
                 />
               ))}
             </div>

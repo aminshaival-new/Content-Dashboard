@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import {
   TrendingUp, RefreshCw, BookMarked, Check, Send, Clock,
   Globe, Hash, Rss, Mail, Zap, Bell, ChevronDown, AlertCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { hooksStore, trendingStore, type CachedTrend } from "@/lib/store"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -542,6 +543,21 @@ function SlackPanel({ items }: { items: TrendItem[] }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// Convert CachedTrend → TrendItem for display
+function cachedToItem(c: CachedTrend, idx: number): TrendItem {
+  return {
+    id: c.id,
+    sourceId: c.source.toLowerCase().replace(/\s/g, "-"),
+    title: c.title,
+    summary: c.summary,
+    minsAgo: Math.round((Date.now() - new Date(c.publishedAt).getTime()) / 60000),
+    tag: c.tag,
+    hookScore: c.hookScore,
+    hookAngle: c.hookAngle,
+    category: c.category,
+  }
+}
+
 export default function Trending() {
   const [activeTag, setActiveTag]     = useState<"all" | Tag>("all")
   const [activeSource, setActiveSource] = useState("all")
@@ -549,36 +565,71 @@ export default function Trending() {
   const [refreshing, setRefreshing]   = useState(false)
   const [savedIds, setSavedIds]       = useState<Set<string>>(new Set())
   const [showSourceMenu, setShowSourceMenu] = useState(false)
+  const [liveItems, setLiveItems]     = useState<TrendItem[]>([])
+  const [usingLive, setUsingLive]     = useState(false)
+
+  const fetchFeed = async () => {
+    setRefreshing(true)
+    try {
+      const res = await fetch("/api/rss")
+      if (res.ok) {
+        const data = await res.json() as { items: CachedTrend[]; cachedAt: string }
+        trendingStore.set(data)
+        setLiveItems(data.items.map(cachedToItem))
+        setUsingLive(true)
+      }
+    } catch {}
+    setRefreshing(false)
+  }
+
+  useEffect(() => {
+    // Check localStorage cache first
+    const cached = trendingStore.get()
+    if (cached && !trendingStore.isStale()) {
+      setLiveItems(cached.items.map(cachedToItem))
+      setUsingLive(true)
+    } else {
+      // Fetch fresh data
+      fetchFeed()
+    }
+    // Also mark existing saved hooks as savedIds
+    const vaultIds = new Set(hooksStore.list().map(h => h.id))
+    // we don't have a mapping here, just leave empty
+  }, [])
+
+  const displayItems = usingLive ? liveItems : ITEMS
 
   const handleRefresh = () => {
-    setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 1600)
+    fetchFeed()
   }
 
   const handleSave = (item: TrendItem) => {
-    if (typeof window === "undefined") return
-    const src = SOURCE_MAP[item.sourceId]
-    const hook = {
-      template: item.hookAngle || item.title,
+    const hookText = item.hookAngle || item.title
+    hooksStore.add({
+      id: `trending-${item.id}`,
+      original: item.title,
+      template: hookText,
       hookType: "Shock",
-      niche: item.category,
-      creator: src?.name || item.sourceId,
-      views: "",
-    }
-    localStorage.setItem("pendingHook", JSON.stringify(hook))
+      niche: item.category || "Tech",
+      creatorName: SOURCES.find(s => s.id === item.sourceId)?.name || item.sourceId,
+      views: 0,
+      viewsLabel: "—",
+      savedAt: new Date().toISOString(),
+      source: "trending",
+    })
     setSavedIds(prev => new Set([...prev, item.id]))
   }
 
   const topPicks = useMemo(() =>
-    ITEMS
+    displayItems
       .filter(i => i.tag === "hook-potential")
       .sort((a, b) => b.hookScore - a.hookScore || a.minsAgo - b.minsAgo)
       .slice(0, 5),
-    []
+    [displayItems]
   )
 
   const filteredFeed = useMemo(() => {
-    return ITEMS
+    return displayItems
       .filter(i => {
         if (activeTag !== "all" && i.tag !== activeTag) return false
         if (activeSource !== "all" && i.sourceId !== activeSource) return false
@@ -586,9 +637,9 @@ export default function Trending() {
         return true
       })
       .sort((a, b) => a.minsAgo - b.minsAgo)
-  }, [activeTag, activeSource, activeCategory])
+  }, [displayItems, activeTag, activeSource, activeCategory])
 
-  const hookCount  = ITEMS.filter(i => i.tag === "hook-potential").length
+  const hookCount  = displayItems.filter(i => i.tag === "hook-potential").length
   const activeSourceName = activeSource === "all"
     ? "All sources"
     : SOURCE_MAP[activeSource]?.name ?? activeSource

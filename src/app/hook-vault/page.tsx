@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
-  Search, Plus, Copy, Eye, BookMarked, X, Flame, Check,
+  Search, Plus, Copy, Eye, BookMarked, X, Flame, Check, Trash2,
   ArrowRight, Sparkles, SortDesc, SortAsc, ChevronDown,
 } from "lucide-react"
 import { cn, formatNum } from "@/lib/utils"
+import { hooksStore, type StoredHook } from "@/lib/store"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -281,15 +282,37 @@ type SaveState = {
   creatorName: string; handle: string; platform: string; views: string; tags: string
 }
 
-function SaveModal({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState<"input" | "review">("input")
+function SaveModal({ onClose, onSave }: { onClose: () => void; onSave: (hook: StoredHook) => void }) {
   const [templatizing, setTemplatizing] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [form, setForm] = useState<SaveState>({
     original: "", template: "", hookType: "Shock", niche: "Creator Economy",
     creatorName: "", handle: "", platform: "Instagram", views: "", tags: "",
   })
 
   const set = (k: keyof SaveState, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSave = () => {
+    if (!form.original.trim()) return
+    const viewsNum = parseInt(form.views.replace(/[^0-9]/g, "")) || 0
+    const viewsLabel = viewsNum >= 1_000_000
+      ? `${(viewsNum / 1_000_000).toFixed(1)}M`
+      : viewsNum >= 1_000 ? `${Math.round(viewsNum / 1_000)}K` : String(viewsNum)
+    onSave({
+      id: `manual-${Date.now()}`,
+      original: form.original.trim(),
+      template: form.template.trim() || form.original.trim(),
+      hookType: form.hookType,
+      niche: form.niche,
+      creatorName: form.creatorName || "Unknown",
+      views: viewsNum,
+      viewsLabel: viewsLabel || "—",
+      savedAt: new Date().toISOString(),
+      source: "manual",
+    })
+    setSaved(true)
+    setTimeout(onClose, 800)
+  }
 
   const autoTemplatize = () => {
     if (!form.original) return
@@ -418,10 +441,11 @@ function SaveModal({ onClose }: { onClose: () => void }) {
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-[#1f1f2e] text-sm text-gray-400 hover:text-white transition-all">
             Cancel
           </button>
-          <button onClick={onClose}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
-            <Flame className="w-4 h-4" />
-            Save to Vault
+          <button onClick={handleSave} disabled={!form.original.trim() || saved}
+            className={cn("flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold transition-colors",
+              saved ? "bg-emerald-600" : "bg-violet-600 hover:bg-violet-500 disabled:opacity-50")}>
+            {saved ? <Check className="w-4 h-4" /> : <Flame className="w-4 h-4" />}
+            {saved ? "Saved!" : "Save to Vault"}
           </button>
         </div>
       </div>
@@ -431,10 +455,11 @@ function SaveModal({ onClose }: { onClose: () => void }) {
 
 // ─── Hook Card ────────────────────────────────────────────────────────────────
 
-function HookCard({ hook, onUse, onWriteScript }: {
+function HookCard({ hook, onUse, onWriteScript, onDelete }: {
   hook: Hook
   onUse: (h: Hook) => void
   onWriteScript: (h: Hook) => void
+  onDelete?: (id: number | string) => void
 }) {
   return (
     <div className="bg-[#111119] border border-[#1f1f2e] rounded-2xl p-5 hover:border-violet-500/25 transition-all flex flex-col gap-4">
@@ -476,6 +501,15 @@ function HookCard({ hook, onUse, onWriteScript }: {
         <CreatorAvatar creator={hook.creator} />
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-gray-600">{hook.dateAdded}</span>
+          {onDelete && (
+            <button
+              onClick={() => onDelete(hook.id)}
+              className="p-1.5 text-gray-600 hover:text-red-400 transition-colors"
+              title="Delete hook"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={() => onUse(hook)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#1f1f2e] text-gray-400 hover:text-white hover:border-[#2a2a3e] text-xs font-medium transition-all"
@@ -508,10 +542,56 @@ function HookCard({ hook, onUse, onWriteScript }: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// Convert seed HOOKS to StoredHook format for seeding localStorage
+function seedToStored(): StoredHook[] {
+  return HOOKS.map(h => ({
+    id: `seed-${h.id}`,
+    original: h.original,
+    template: h.template,
+    hookType: h.hookType,
+    niche: h.niche,
+    creatorName: h.creator.name,
+    views: h.views,
+    viewsLabel: h.viewsLabel,
+    savedAt: h.dateAdded,
+    source: "seed" as const,
+  }))
+}
+
+// Convert StoredHook → Hook (for display)
+function storedToHook(s: StoredHook): Hook {
+  const initials = s.creatorName.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
+  const COLORS: Record<string, string> = {
+    "Lara Acosta": "bg-pink-500", "Alex Hormozi": "bg-orange-500",
+    "Gary Vaynerchuk": "bg-green-600", "Dakota Robertson": "bg-violet-500",
+    "Andrew Huberman": "bg-blue-600", "Justin Welsh": "bg-blue-500",
+    "Shaiival": "bg-violet-600",
+  }
+  return {
+    id: s.id as unknown as number,
+    original: s.original,
+    template: s.template,
+    hookType: s.hookType,
+    niche: s.niche,
+    creator: {
+      name: s.creatorName,
+      handle: `@${s.creatorName.toLowerCase().replace(/\s/g, "")}`,
+      initials,
+      color: COLORS[s.creatorName] || "bg-gray-600",
+      platform: "Instagram",
+    },
+    views: s.views,
+    viewsLabel: s.viewsLabel,
+    dateAdded: s.savedAt.slice(0, 10),
+    tags: [],
+  }
+}
+
 type SortKey = "views-desc" | "views-asc" | "newest" | "oldest"
 
 export default function HookVault() {
   const router = useRouter()
+  const [hooks, setHooks]           = useState<Hook[]>(HOOKS)
   const [query, setQuery]           = useState("")
   const [niche, setNiche]           = useState("All")
   const [hookType, setHookType]     = useState("All")
@@ -520,8 +600,29 @@ export default function HookVault() {
   const [showSave, setShowSave]     = useState(false)
   const [showSortMenu, setShowSortMenu] = useState(false)
 
+  // Load hooks from localStorage, seed if empty
+  useEffect(() => {
+    let stored = hooksStore.list()
+    if (stored.length === 0) {
+      const seeds = seedToStored()
+      seeds.forEach(h => hooksStore.add(h))
+      stored = hooksStore.list()
+    }
+    setHooks(stored.map(storedToHook))
+  }, [])
+
+  const handleSave = (stored: StoredHook) => {
+    hooksStore.add(stored)
+    setHooks(hooksStore.list().map(storedToHook))
+  }
+
+  const handleDelete = (id: number | string) => {
+    hooksStore.remove(String(id))
+    setHooks(hooksStore.list().map(storedToHook))
+  }
+
   const filtered = useMemo(() => {
-    let r = HOOKS
+    let r = hooks
     if (query) {
       const q = query.toLowerCase()
       r = r.filter(h =>
@@ -541,7 +642,7 @@ export default function HookVault() {
     if (sortBy === "views-asc") sorted.sort((a, b) => a.views - b.views)
     if (sortBy === "oldest") sorted.reverse()
     return sorted
-  }, [query, niche, hookType, minViews, sortBy])
+  }, [hooks, query, niche, hookType, minViews, sortBy])
 
   const useHook = (hook: Hook) => {
     if (typeof window !== "undefined") {
@@ -570,9 +671,9 @@ export default function HookVault() {
     router.push("/script")
   }
 
-  const totalViews = HOOKS.reduce((s, h) => s + h.views, 0)
+  const totalViews = hooks.reduce((s, h) => s + h.views, 0)
   const topType = [...HOOK_TYPES.filter(t => t !== "All")]
-    .sort((a, b) => HOOKS.filter(h => h.hookType === b).length - HOOKS.filter(h => h.hookType === a).length)[0]
+    .sort((a, b) => hooks.filter(h => h.hookType === b).length - hooks.filter(h => h.hookType === a).length)[0]
 
   const currentSort = SORT_OPTIONS.find(s => s.value === sortBy)
 
@@ -585,7 +686,7 @@ export default function HookVault() {
             <BookMarked className="w-5 h-5 text-violet-400" />
             <h1 className="text-xl font-bold text-white">Hook Vault</h1>
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">
-              {HOOKS.length} hooks
+              {hooks.length} hooks
             </span>
           </div>
           <p className="text-sm text-gray-500">Every viral hook transcribed, templatized, and ready to use</p>
@@ -607,7 +708,7 @@ export default function HookVault() {
         </div>
         <div className="w-px h-8 bg-[#1f1f2e]" />
         <div>
-          <p className="text-lg font-bold text-white">{HOOKS.length}</p>
+          <p className="text-lg font-bold text-white">{hooks.length}</p>
           <p className="text-[11px] text-gray-500">hooks saved</p>
         </div>
         <div className="w-px h-8 bg-[#1f1f2e]" />
@@ -617,7 +718,7 @@ export default function HookVault() {
         </div>
         <div className="w-px h-8 bg-[#1f1f2e]" />
         <div>
-          <p className="text-lg font-bold text-white">{formatNum(Math.round(totalViews / HOOKS.length))}</p>
+          <p className="text-lg font-bold text-white">{hooks.length ? formatNum(Math.round(totalViews / hooks.length)) : "—"}</p>
           <p className="text-[11px] text-gray-500">avg views / hook</p>
         </div>
       </div>
@@ -720,12 +821,12 @@ export default function HookVault() {
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {filtered.map(hook => (
-            <HookCard key={hook.id} hook={hook} onUse={useHook} onWriteScript={writeScript} />
+            <HookCard key={hook.id} hook={hook} onUse={useHook} onWriteScript={writeScript} onDelete={handleDelete} />
           ))}
         </div>
       )}
 
-      {showSave && <SaveModal onClose={() => setShowSave(false)} />}
+      {showSave && <SaveModal onClose={() => setShowSave(false)} onSave={handleSave} />}
     </div>
   )
 }

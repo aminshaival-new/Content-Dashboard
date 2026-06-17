@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import {
   CalendarDays, ChevronLeft, ChevronRight, Sparkles, Clock,
   Instagram, Youtube, Music2, Copy, Check, ArrowLeft, FileText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { postsStore, type StoredPost } from "@/lib/store"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -277,6 +278,26 @@ const POSTS: CalendarPost[] = [
 
 function pad(n: number) { return String(n).padStart(2, "0") }
 
+function storedToCalendar(p: StoredPost): CalendarPost {
+  const dt = new Date(p.scheduledAt)
+  const date = p.scheduledAt.slice(0, 10)
+  const h = dt.getHours()
+  const mins = dt.getMinutes()
+  const ampm = h >= 12 ? "PM" : "AM"
+  const h12 = h % 12 || 12
+  const time = `${h12}:${pad(mins)} ${ampm}`
+  return {
+    id: p.id,
+    date,
+    time,
+    platforms: p.platforms as Platform[],
+    hookText: p.hookText,
+    hookType: p.hookType || "Shock",
+    script: { hook: p.hookText, body1: p.angle || "", body2: "", cta: p.cta || "" },
+    captions: p.captions as Partial<Record<Platform, string>>,
+  }
+}
+
 function buildCalendarDays(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
@@ -534,17 +555,28 @@ function MonthOverview({ posts, month, year }: { posts: CalendarPost[]; month: n
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ContentCalendar() {
-  const [year, setYear]           = useState(2026)
-  const [month, setMonth]         = useState(5)
+  const now = new Date()
+  const [year, setYear]           = useState(now.getFullYear())
+  const [month, setMonth]         = useState(now.getMonth())
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedPost, setSelectedPost] = useState<CalendarPost | null>(null)
+  const [allPosts, setAllPosts]   = useState<CalendarPost[]>(POSTS)
+
+  // Load from scheduler localStorage, fall back to hardcoded POSTS
+  useEffect(() => {
+    const stored = postsStore.list()
+    if (stored.length > 0) {
+      setAllPosts(stored.map(storedToCalendar))
+    }
+    // else keep hardcoded POSTS as examples
+  }, [])
 
   const days = useMemo(() => buildCalendarDays(year, month), [year, month])
   const monthKey = `${year}-${pad(month + 1)}`
 
   const monthPosts = useMemo(
-    () => POSTS.filter(p => p.date.startsWith(monthKey)),
-    [monthKey]
+    () => allPosts.filter(p => p.date.startsWith(monthKey)),
+    [allPosts, monthKey]
   )
 
   const postsByDate = useMemo(() => {

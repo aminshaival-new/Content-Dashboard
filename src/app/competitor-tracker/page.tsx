@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import {
   Users, Plus, RefreshCw, BookMarked, Check, ExternalLink,
   Mic, Monitor, FileText, ChevronDown, ChevronUp, X, Clock, Zap, CalendarDays,
 } from "lucide-react"
 import { cn, formatNum } from "@/lib/utils"
+import { hooksStore, StoredHook } from "@/lib/store"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -318,6 +319,11 @@ const HOOK_TYPE_COLORS: Record<string, string> = {
   Curiosity: "bg-violet-500/15 text-violet-300 border-violet-500/20",
 }
 
+const AVATAR_COLORS = [
+  "bg-violet-500", "bg-pink-500", "bg-emerald-500", "bg-blue-500",
+  "bg-orange-500", "bg-cyan-500", "bg-rose-500", "bg-amber-500",
+]
+
 function viewColor(v: number) {
   if (v >= 5_000_000) return "text-yellow-400"
   if (v >= 1_000_000) return "text-orange-400"
@@ -474,9 +480,26 @@ function ReelItem({
 
 // ─── Add Account Modal ────────────────────────────────────────────────────────
 
-function AddModal({ onClose }: { onClose: () => void }) {
-  const [handle, setHandle] = useState("")
+function AddModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data: { name: string; handle: string; platform: string; niche: string }) => void }) {
+  const [name, setName]       = useState("")
+  const [handle, setHandle]   = useState("")
   const [platform, setPlatform] = useState("Instagram")
+  const [niche, setNiche]     = useState("")
+  const [error, setError]     = useState("")
+
+  function handleSubmit() {
+    if (!name.trim()) {
+      setError("Name is required.")
+      return
+    }
+    if (!handle.trim()) {
+      setError("Handle is required.")
+      return
+    }
+    setError("")
+    onAdd({ name: name.trim(), handle: handle.trim(), platform, niche: niche.trim() })
+    onClose()
+  }
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -489,8 +512,17 @@ function AddModal({ onClose }: { onClose: () => void }) {
           <p className="text-xs text-gray-500">
             Add a handle and we'll scrape their top 5 reels every Sunday at 6:00 AM — transcribing audio, pulling on-screen text, and detecting hook type automatically.
           </p>
+          {error && (
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">{error}</p>
+          )}
           <div>
-            <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Handle</label>
+            <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Name <span className="text-red-400">*</span></label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="e.g. Naval Ravikant"
+              className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Handle <span className="text-red-400">*</span></label>
             <input value={handle} onChange={e => setHandle(e.target.value)}
               placeholder="@creatorhandle"
               className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50" />
@@ -502,10 +534,16 @@ function AddModal({ onClose }: { onClose: () => void }) {
               {["Instagram", "TikTok", "YouTube", "Twitter", "LinkedIn"].map(p => <option key={p}>{p}</option>)}
             </select>
           </div>
+          <div>
+            <label className="text-xs text-gray-400 font-semibold uppercase tracking-wide mb-1.5 block">Niche</label>
+            <input value={niche} onChange={e => setNiche(e.target.value)}
+              placeholder="e.g. Investing, SaaS, Fitness..."
+              className="w-full px-3 py-2.5 bg-[#0a0a12] border border-[#1f1f2e] rounded-xl text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:border-violet-500/50" />
+          </div>
         </div>
         <div className="px-5 pb-5 flex gap-3">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-[#1f1f2e] text-sm text-gray-400 hover:text-white transition-all">Cancel</button>
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
+          <button onClick={handleSubmit} className="flex-1 px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
             Add & Schedule
           </button>
         </div>
@@ -522,14 +560,58 @@ export default function CompetitorTracker() {
   const [expandedIds, setExpandedIds]     = useState<Set<number>>(new Set())
   const [showAdd, setShowAdd]             = useState(false)
   const [scraping, setScraping]           = useState(false)
+  const [customAccounts, setCustomAccounts] = useState<Account[]>([])
+
+  // Load persisted custom accounts from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cd_tracked_accounts")
+      if (raw) {
+        const parsed = JSON.parse(raw) as Account[]
+        setCustomAccounts(parsed)
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }, [])
+
+  const allAccounts: Account[] = useMemo(
+    () => [...ACCOUNTS, ...customAccounts],
+    [customAccounts]
+  )
 
   const sorted = useMemo(() => {
     const reels = accountFilter != null ? REELS.filter(r => r.accountId === accountFilter) : REELS
     return [...reels].sort((a, b) => b.views - a.views)
   }, [accountFilter])
 
-  const toggleSave = (id: number) =>
-    setSavedIds(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const toggleSave = (reel: ReelCard) => {
+    const id = reel.id
+    setSavedIds(p => {
+      const n = new Set(p)
+      if (n.has(id)) {
+        n.delete(id)
+      } else {
+        n.add(id)
+        // Persist to Hook Vault
+        const account = allAccounts.find(a => a.id === reel.accountId)
+        const hook: StoredHook = {
+          id: `competitor-${id}`,
+          template: reel.hook,
+          original: reel.hook,
+          hookType: reel.hookType,
+          niche: account?.niche ?? "",
+          creatorName: account?.name ?? "",
+          views: reel.views,
+          viewsLabel: reel.viewsLabel,
+          savedAt: new Date().toISOString(),
+          source: "competitor",
+        }
+        hooksStore.add(hook)
+      }
+      return n
+    })
+  }
 
   const toggleExpand = (id: number) =>
     setExpandedIds(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -539,7 +621,33 @@ export default function CompetitorTracker() {
     setTimeout(() => setScraping(false), 2200)
   }
 
-  const accountForReel = (id: number) => ACCOUNTS.find(a => a.id === id)!
+  const handleAddAccount = (data: { name: string; handle: string; platform: string; niche: string }) => {
+    const words = data.name.trim().split(/\s+/)
+    const initials = words.length >= 2
+      ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
+      : words[0].slice(0, 2).toUpperCase()
+    const color = AVATAR_COLORS[customAccounts.length % AVATAR_COLORS.length]
+    const newAccount: Account = {
+      id: Date.now(),
+      name: data.name,
+      handle: data.handle,
+      followers: 0,
+      followersLabel: "—",
+      initials,
+      color,
+      platform: data.platform,
+      niche: data.niche || "—",
+    }
+    const updated = [...customAccounts, newAccount]
+    setCustomAccounts(updated)
+    try {
+      localStorage.setItem("cd_tracked_accounts", JSON.stringify(updated))
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  const accountForReel = (id: number) => allAccounts.find(a => a.id === id)!
 
   return (
     <div className="p-8 animate-fade-in">
@@ -550,7 +658,7 @@ export default function CompetitorTracker() {
             <Users className="w-5 h-5 text-violet-400" />
             <h1 className="text-xl font-bold text-white">Competitor Tracker</h1>
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-violet-500/15 text-violet-400 border border-violet-500/20">
-              {ACCOUNTS.length} accounts
+              {allAccounts.length} accounts
             </span>
           </div>
           <p className="text-sm text-gray-500">Top 5 reels per account · audio transcribed · scraped weekly</p>
@@ -604,9 +712,9 @@ export default function CompetitorTracker() {
               : "text-gray-500 border-[#1f1f2e] hover:text-gray-200 hover:border-[#2a2a3e]"
           )}
         >
-          All {ACCOUNTS.length} accounts
+          All {allAccounts.length} accounts
         </button>
-        {ACCOUNTS.map(acc => (
+        {allAccounts.map(acc => (
           <AccountChip
             key={acc.id}
             account={acc}
@@ -619,7 +727,7 @@ export default function CompetitorTracker() {
       {/* Result count */}
       <p className="text-xs text-gray-600 mb-4">
         Showing <span className="text-gray-300 font-semibold">{sorted.length} reels</span>
-        {accountFilter != null && <> from <span className="text-gray-300 font-semibold">{ACCOUNTS.find(a => a.id === accountFilter)?.name}</span></>}
+        {accountFilter != null && <> from <span className="text-gray-300 font-semibold">{allAccounts.find(a => a.id === accountFilter)?.name}</span></>}
         {" "}· sorted by view count
       </p>
 
@@ -633,13 +741,18 @@ export default function CompetitorTracker() {
             rank={i + 1}
             saved={savedIds.has(reel.id)}
             expanded={expandedIds.has(reel.id)}
-            onSave={() => toggleSave(reel.id)}
+            onSave={() => toggleSave(reel)}
             onToggleExpand={() => toggleExpand(reel.id)}
           />
         ))}
       </div>
 
-      {showAdd && <AddModal onClose={() => setShowAdd(false)} />}
+      {showAdd && (
+        <AddModal
+          onClose={() => setShowAdd(false)}
+          onAdd={handleAddAccount}
+        />
+      )}
     </div>
   )
 }
